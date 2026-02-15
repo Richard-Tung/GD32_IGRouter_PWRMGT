@@ -243,9 +243,15 @@ void printConfig()
     shell.print("Timer Count: ");shell.print(time_count);shell.println();
 }
 
+void cmd_volt(Shell& s, char* args)
+{
+    s.print("Current Input Voltage: ");s.print(getVoltage());s.println("mV");
+}
+
 void cmd_print(Shell& s, char* args)
 {
     printConfig();
+    cmd_volt(s,args);
 }
 
 void cmd_save(Shell& s, char* args)
@@ -366,15 +372,73 @@ void cmd_v_wakeup_set(Shell& s, char* args)
     s.print("WakeUp Voltage set to: ");s.print(getConfigValue(CONFIG_VOLT_WAKEUP));s.println("mV");
 }
 
-void cmd_volt(Shell& s, char* args)
+void cmd_t_starting_set(Shell& s, char* args)
 {
-    s.print("Current Input Voltage: ");s.print(getVoltage());s.println("mV");
+    int32_t result=atoi(args);
+    if(result<30)
+    {
+        s.println("Error: Starting Time must equal or larger than 30s");
+        s.print("Your input: ");s.print(result);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_TIME_STARTING,result);
+    s.print("Starting Time set to: ");s.print(getConfigValue(CONFIG_TIME_STARTING));s.println("s");
+}
+
+void cmd_t_shutdown_set(Shell& s, char* args)
+{
+    int32_t result=atoi(args);
+    if(result<30)
+    {
+        s.println("Error: Shutdown Time must equal or larger than 30s");
+        s.print("Your input: ");s.print(result);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_TIME_SHUTDOWN,result);
+    s.print("Shutdown Time set to: ");s.print(getConfigValue(CONFIG_TIME_SHUTDOWN));s.println("s");
+}
+
+void cmd_t_sleep_set(Shell& s, char* args)
+{
+    int32_t result=atoi(args);
+    if(result<10||result >300)
+    {
+        s.println("Error: Enter Sleep Time must equal or larger than 10s, and smaller than 300s");
+        s.print("Your input: ");s.print(result);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_TIME_ENTER_SLEEP,result);
+    s.print("Enter Sleep Time set to: ");s.print(getConfigValue(CONFIG_TIME_ENTER_SLEEP));s.println("s");
+}
+
+void cmd_t_wdt_set(Shell& s, char* args)
+{
+    int32_t result=atoi(args);
+    if(result<30)
+    {
+        s.println("Error: WDT Timeout must equal or larger than 30s");
+        s.print("Your input: ");s.print(result);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_TIMEOUT_WDT,result);
+    s.print("WDT Timeout set to: ");s.print(getConfigValue(CONFIG_TIMEOUT_WDT));s.println("s");
+}
+
+void cmd_t_uvlo_set(Shell& s, char* args)
+{
+    int32_t result=atoi(args);
+    if(result<2)
+    {
+        s.println("Error: UVLO Timeout must equal or larger than 2s");
+        s.print("Your input: ");s.print(result);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_TIMEOUT_UVLO,result);
+    s.print("UVLO Timeout set to: ");s.print(getConfigValue(CONFIG_TIMEOUT_UVLO));s.println("s");
 }
 
 CommandInterpreter intp_get(shell,"get","Get Config");
 CommandInterpreter intp_set(shell,"set","Set Config");
-
-// CommandInterpreter intp_time(shell,"t","Time Specified");
 
 void registerCommands()
 {
@@ -393,6 +457,12 @@ void registerCommands()
     intp_set.registerCommand("v_pull","Set VIN Resistance",&cmd_v_pull_set);
     intp_set.registerCommand("v_uvlo","Set Low Voltage Shutdown Voltage (mV)",&cmd_v_uvlo_set);
     intp_set.registerCommand("v_wakeup","Set Wake Up Voltage (mV)",&cmd_v_wakeup_set);
+
+    intp_set.registerCommand("t_starting","Set Starting Time (s)",&cmd_t_starting_set);
+    intp_set.registerCommand("t_shutdown","Set Shutdown Time (s)",&cmd_t_shutdown_set);
+    intp_set.registerCommand("t_sleep","Set Enter Sleep Time (s)",&cmd_t_sleep_set);
+    intp_set.registerCommand("t_wdt","Set WDT Timeout (s)",&cmd_t_wdt_set);
+    intp_set.registerCommand("t_uvlo","Set UVLO Timeout (s)",&cmd_t_uvlo_set);
 
     shell.registerCommandInterpreter(&intp_get);
     shell.registerCommandInterpreter(&intp_set);
