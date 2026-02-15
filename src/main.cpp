@@ -151,19 +151,24 @@ void wdt_reset_isr()
 }
 
 volatile unsigned long resetMillis = 0;
+volatile bool reset_button_pressed = false;
 bool config_reset_flag=false;
 
-void reset_button_pressed()
+void reset_button_isr()
 {
-    resetMillis = millis();
-}
-
-void reset_button_released()
-{
-    if(millis() - resetMillis >= 10000) //10s
+    if(digitalRead(GPIO_WDT_RESET_BUTTON)==LOW)//pressed
     {
-        //do reset
-        config_reset_flag=true;
+        resetMillis = millis();
+        reset_button_pressed=true;
+    }
+    else
+    {
+        if(reset_button_pressed && millis() - resetMillis >= 10000) //released 10s
+        {
+            //do reset
+            config_reset_flag=true;
+        }
+        reset_button_pressed=false;
     }
     wdt_count=0;
 }
@@ -404,8 +409,7 @@ void setup() {
     pinMode(GPIO_EN_ROUTER,OUTPUT);
     pinMode(GPIO_EN_DC,OUTPUT);
     pinMode(GPIO_WDT_RESET_BUTTON,INPUT);
-    attachInterrupt(digitalPinToInterrupt(GPIO_WDT_RESET_BUTTON),&reset_button_pressed, FALLING);
-    attachInterrupt(digitalPinToInterrupt(GPIO_WDT_RESET_BUTTON),&reset_button_released, RISING);
+    attachInterrupt(digitalPinToInterrupt(GPIO_WDT_RESET_BUTTON),&reset_button_isr, CHANGE);
     pinMode(GPIO_WDT_INPUT,INPUT);
     attachInterrupt(digitalPinToInterrupt(GPIO_WDT_INPUT),&wdt_reset_isr, CHANGE);
     pinMode(GPIO_SHUTDOWN_NOTIFY,OUTPUT);
@@ -453,6 +457,7 @@ void loop() {
     }
     if(config_reset_flag)
     {
+        shell.println("WDT Button: Resetting to defaults");
         setConfigDefaults();
         saveConfig();
         config_reset_flag=false;
