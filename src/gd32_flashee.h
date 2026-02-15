@@ -16,11 +16,11 @@
 
 #define FLASH_EE_START_FLAG 0xAAAAAAAAU
 #define FLASH_EE_END_FLAG 0xAAAAAAAAU
-#define FLASH_EE_ERASE_FLAG 0x00000000U
+// #define FLASH_EE_ERASE_FLAG 0x00000000U
 
 #define FLASH_EE_STORAGE_SIZE FLASH_EE_PAGE_SIZE/sizeof(uint32_t)-4
 
-bool ee_init(uint32_t version);
-bool ee_save();
+int8_t ee_init(uint32_t version);
+int8_t ee_save();
 bool ee_get(uint32_t offset,uint32_t &value);
 bool ee_set(uint32_t offset,uint32_t value);

@@ -21,8 +21,8 @@
 #define ADC_SET_RESOLUTION 12
 #define ADC_MAX 4095
 
-// #define ADC_VOLT_PULLUP 200     //K
-// #define ADC_VOLT_PULLDOWN 20    //K
+// #define ADC_VOLT_PULLUP 200000     //ohm
+// #define ADC_VOLT_PULLDOWN 20000    //ohm
 // #define ADC_VREF 3330           //mV
 
 // #define VOLT_UVLO 11800
@@ -53,8 +53,8 @@ enum ConfigID {
 static_assert(CONFIG_COUNT <= FLASH_EE_STORAGE_SIZE, "Too many config items for EEPROM");
 
 const uint32_t config_defaults[CONFIG_COUNT]={
-    200,    //CONFIG_ADC_VOLT_PULLUP
-    20,     //CONFIG_ADC_VOLT_PULLDOWN
+    200000, //CONFIG_ADC_VOLT_PULLUP
+    20000,  //CONFIG_ADC_VOLT_PULLDOWN
     3330,   //CONFIG_ADC_VREF
     11800,  //CONFIG_VOLT_UVLO
     13000,  //CONFIG_VOLT_WAKEUP
@@ -80,6 +80,8 @@ const char* config_string[CONFIG_COUNT] {
     "TIMEOUT_UVLO",
 };
 
+Shell shell(Serial);
+
 //ee
 
 uint32_t getConfigValue(ConfigID id)
@@ -102,19 +104,9 @@ void setConfigDefaults()
     }
 }
 
-void printConfig()
+int8_t saveConfig()
 {
-    for(int i=0;i<CONFIG_COUNT;i++)
-    {
-        Serial.print(config_string[i]);
-        Serial.print(": ");
-        Serial.println(getConfigValue( (ConfigID)i) );
-    }
-}
-
-void saveConfig()
-{
-    ee_save();
+    return ee_save();
 }
 
 enum SystemState {
@@ -183,7 +175,7 @@ void iwdg_setup()
     fwdgt_write_enable();
     fwdgt_config(1563 ,FWDGT_PSC_DIV256);//10s
     fwdgt_enable();
-    Serial.println("MCU WDG Enabled");
+    shell.println("MCU WDG Enabled");
 }
 
 void iwdg_feed()
@@ -200,7 +192,7 @@ uint32_t getVoltage()
     uint32_t pulldown=getConfigValue(CONFIG_ADC_VOLT_PULLDOWN);
     uint32_t adc_vref=getConfigValue(CONFIG_ADC_VREF);
     uint32_t volt=adc_vref*buffer/ADC_MAX*(pullup+pulldown)/pulldown;
-    Serial.print("Voltage: ");Serial.println(volt);
+    // shell.print("Voltage: ");shell.print(volt);shell.println();
     return volt;
 }
 
@@ -211,7 +203,7 @@ bool isWakeUp()
 
 void prepareSleepMode()
 {
-    Serial.println("Preparing for Sleep Mode");
+    shell.println("Preparing for Sleep Mode");
     Serial.flush();
     iwdg_feed();
     NVIC_SystemReset();
@@ -220,7 +212,7 @@ void prepareSleepMode()
 void enterSleepMode()
 {
     digitalWrite(GPIO_RUN_LED,LOW);
-    Serial.println("Entering Sleep Mode");
+    shell.println("Entering Sleep Mode");
     Serial.flush();
     rcu_periph_clock_enable(RCU_PMU);
     pmu_flag_clear(PMU_FLAG_WAKEUP);
@@ -229,9 +221,183 @@ void enterSleepMode()
     pmu_to_standbymode(WFI_CMD);
 }
 
+//cmd
+
+void printConfig()
+{
+    for(int i=0;i<CONFIG_COUNT;i++)
+    {
+        shell.print(config_string[i]);
+        shell.print(": ");
+        shell.print(getConfigValue( (ConfigID)i) );
+        shell.print(SHELL_NEW_LINE);
+    }
+    shell.print("Current State: ");shell.print(getSystemStateString(sys_state));shell.println();
+    shell.print("UVLO Timeout Count: ");shell.print(uvlo_count);shell.println();
+    shell.print("WDT Timeout Count: ");shell.print(wdt_count);shell.println();
+    shell.print("Timer Count: ");shell.print(time_count);shell.println();
+}
+
+void cmd_print(Shell& s, char* args)
+{
+    printConfig();
+}
+
+void cmd_save(Shell& s, char* args)
+{
+    int8_t result=saveConfig();
+
+    s.println("Saved");
+    s.print("Current page: ");s.print((int32_t)result);s.println();
+}
+
+void cmd_restorefactory(Shell& s, char* args)
+{
+    setConfigDefaults();
+    int8_t result=saveConfig();
+    s.println("Resetting to defaults");
+    s.print("Current page: ");s.print((int32_t)result);s.println();
+}
+
+void cmd_restartdc(Shell& s, char* args)
+{
+    if(sys_state==STANDBY)
+    {
+        s.println("Error: cannot restart DC on StandBy mode");
+        return;
+    }
+    s.println("Disabling DC...");
+    digitalWrite(GPIO_EN_DC,LOW);
+    delay(1000);
+    s.println("Enabling DC...");
+    digitalWrite(GPIO_EN_DC,LOW);
+    s.println("Done");
+}
+
+//cmd v
+void cmd_v_vref_get(Shell& s, char* args)
+{
+    s.print("VREF: ");s.print(getConfigValue(CONFIG_ADC_VREF));s.println("mV");
+}
+
+void cmd_v_vref_set(Shell& s, char* args)
+{
+    int32_t result=atoi(args);
+    if(result<3000 || result>4000)
+    {
+        s.println("Error: VREF must between 3000 and 4000 mV");
+        s.print("Your input: ");s.print(result);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_ADC_VREF,result);
+    s.print("VREF set to: ");s.print(getConfigValue(CONFIG_ADC_VREF));s.println("mV");
+}
+
+void cmd_v_pull_get(Shell& s, char* args)
+{
+    s.print("Pull Up: ");s.print(getConfigValue(CONFIG_ADC_VOLT_PULLUP));
+    s.println();
+    s.print("Pull Down: ");s.print(getConfigValue(CONFIG_ADC_VOLT_PULLDOWN));
+    s.println();
+}
+
+void cmd_v_pull_set(Shell& s, char* args)
+{
+    char s_pullup[SHELL_MAX_COMMAND_LENGTH],s_pulldown[SHELL_MAX_COMMAND_LENGTH];
+    splitArgs(args,s_pullup,s_pulldown);
+    if(strlen(s_pullup)==0||strlen(s_pulldown)==0)
+    {
+        s.println("Usage: set pull [pullup] [pulldown]");
+        return;
+    }
+    int pullup=atoi(s_pullup);
+    int pulldown=atoi(s_pulldown);
+    if(pullup<=0 || pulldown<=0)
+    {
+        s.println("PullUp and PullDown must larger than 0");
+        s.print("Your input: PullUp: ");s.print((int32_t)pullup);s.print(" PullDown: ");s.print((int32_t)pulldown);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_ADC_VOLT_PULLUP,(uint32_t)pullup);
+    setConfigValue(CONFIG_ADC_VOLT_PULLDOWN,(uint32_t)pulldown);
+    s.print("Set PullUp: ");s.print((int32_t)pullup);s.print(" PullDown: ");s.print((int32_t)pulldown);s.println();
+}
+
+void cmd_v_uvlo_get(Shell& s, char* args)
+{
+    s.print("UVLO: ");s.print(getConfigValue(CONFIG_VOLT_UVLO));s.println("mV");
+}
+
+void cmd_v_uvlo_set(Shell& s, char* args)
+{
+    int32_t result=atoi(args);
+    uint32_t wakeup=getConfigValue(CONFIG_VOLT_WAKEUP);
+    if(result<7000 || result>=wakeup)
+    {
+        s.print("Error: VREF must higher than 7000mV and below Wakeup ");s.print(wakeup);s.println("mV");
+        s.print("Your input: ");s.print(result);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_VOLT_UVLO,result);
+    s.print("UVLO Voltage set to: ");s.print(getConfigValue(CONFIG_VOLT_UVLO));s.println("mV");
+}
+
+void cmd_v_wakeup_get(Shell& s, char* args)
+{
+    s.print("WakeUp: ");s.print(getConfigValue(CONFIG_VOLT_WAKEUP));s.println("mV");
+}
+
+void cmd_v_wakeup_set(Shell& s, char* args)
+{
+    int32_t result=atoi(args);
+    uint32_t uvlo=getConfigValue(CONFIG_VOLT_UVLO);
+    if(result<=uvlo || result>40000)
+    {
+        s.print("Error: VREF must higher than UVLO ");s.print(uvlo);s.println(" mV and below 40000mV");
+        s.print("Your input: ");s.print(result);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_VOLT_WAKEUP,result);
+    s.print("WakeUp Voltage set to: ");s.print(getConfigValue(CONFIG_VOLT_WAKEUP));s.println("mV");
+}
+
+void cmd_volt(Shell& s, char* args)
+{
+    s.print("Current Input Voltage: ");s.print(getVoltage());s.println("mV");
+}
+
+CommandInterpreter intp_get(shell,"get","Get Config");
+CommandInterpreter intp_set(shell,"set","Set Config");
+
+// CommandInterpreter intp_time(shell,"t","Time Specified");
+
+void registerCommands()
+{
+    shell.registerCommand("volt","Get Current Input Voltage",&cmd_volt);
+    shell.registerCommand("print","Print All Config",&cmd_print);
+    shell.registerCommand("restartdc","PowerOff DC and re-PowerOn",&cmd_restartdc);
+    shell.registerCommand("save","Save Config",&cmd_save);
+    shell.registerCommand("restorefactory","Restore Factory Config",&cmd_restorefactory);
+
+    intp_get.registerCommand("v_vref","Get VREF (mV)",&cmd_v_vref_get);
+    intp_get.registerCommand("v_pull","Get VIN Resistance",&cmd_v_pull_get);
+    intp_get.registerCommand("v_uvlo","Get Low Voltage Shutdown Voltage (mV)",&cmd_v_uvlo_get);
+    intp_get.registerCommand("v_wakeup","Get Wake Up Voltage (mV)",&cmd_v_wakeup_get);
+
+    intp_set.registerCommand("v_vref","Set VREF (mV)",&cmd_v_vref_set);
+    intp_set.registerCommand("v_pull","Set VIN Resistance",&cmd_v_pull_set);
+    intp_set.registerCommand("v_uvlo","Set Low Voltage Shutdown Voltage (mV)",&cmd_v_uvlo_set);
+    intp_set.registerCommand("v_wakeup","Set Wake Up Voltage (mV)",&cmd_v_wakeup_set);
+
+    shell.registerCommandInterpreter(&intp_get);
+    shell.registerCommandInterpreter(&intp_set);
+
+    // shell.registerCommandInterpreter(&intp_time);
+}
+
 void setup() {
     Serial.begin(115200);
-    Serial.println("MCU Reset");
+    shell.println("MCU Reset");
     analogReadResolution(ADC_SET_RESOLUTION);
     pinMode(GPIO_WAKE,INPUT);
     pinMode(GPIO_VOLT_INPUT_ADC,INPUT_ANALOG);
@@ -249,13 +415,20 @@ void setup() {
     digitalWrite(GPIO_EN_DC,LOW);
     digitalWrite(GPIO_SHUTDOWN_NOTIFY,LOW);
 
-    if(!ee_init(EE_VERSION))
+    int8_t ee_result=ee_init(EE_VERSION);
+    if(ee_result<0)
     {
-        Serial.println("Using default config");
+        shell.println("Using default config");
         setConfigDefaults();
     }
-    else Serial.println("Loaded config from EEPROM");
+    else
+    {
+        shell.print("Loaded config from EEPROM page ");shell.print((int32_t)ee_result);shell.println();
+    }
     printConfig();
+
+    shell.begin();
+    registerCommands();
 
     if(rcu_flag_get(RCU_FLAG_SWRST) && getVoltage()<getConfigValue(CONFIG_VOLT_WAKEUP)) enterSleepMode();
 
@@ -284,12 +457,19 @@ void loop() {
         saveConfig();
         config_reset_flag=false;
     }
+    int c;
+    while((c=Serial.read())>0)
+    {
+        if(sys_state==STANDBY && isPrintable(c)) uvlo_count=0;//dont sleep on serial active
+        shell.inputChar((char)c);
+    }
+    shell.prompt_flush();
     delay(1);
 }
 
 void setSystemState(SystemState state)
 {
-    Serial.print("SystemState: ");Serial.println(getSystemStateString(state));
+    shell.print("SystemState: ");shell.println(getSystemStateString(state));
     sys_state=state;
     switch (sys_state)
     {
@@ -307,7 +487,7 @@ void setSystemState(SystemState state)
         digitalWrite(GPIO_SHUTDOWN_NOTIFY,HIGH);
         delay(1000);
         digitalWrite(GPIO_SHUTDOWN_NOTIFY,LOW);
-        Serial.println("Shutdown Notify Sent");
+        shell.println("Shutdown Notify Sent");
         time_count=0;
         break;
     case RESTARTING:
@@ -339,10 +519,10 @@ void SystemStateLoop()
         if(!isWakeUp() && getVoltage()<getConfigValue(CONFIG_VOLT_UVLO))
         {
             uvlo_count++;
-            Serial.print("UVLO Count: ");Serial.println(uvlo_count);
+            shell.print("UVLO Count: ");shell.print(uvlo_count);shell.println();
             if(uvlo_count>getConfigValue(CONFIG_TIMEOUT_UVLO)) 
             {
-                Serial.println("UVLO Timeout");
+                shell.println("UVLO Timeout");
                 setSystemState(SHUTTING_DOWN);
                 break;
             }
@@ -351,10 +531,10 @@ void SystemStateLoop()
         //WDT
         wdt_count++;
         if(digitalRead(GPIO_WDT_RESET_BUTTON)==LOW) wdt_count=0;
-        Serial.print("WDT Count: ");Serial.println(wdt_count);
+        // shell.print("WDT Count: ");shell.print(wdt_count);shell.println();
         if(wdt_count>getConfigValue(CONFIG_TIMEOUT_WDT)) 
         {
-            Serial.println("WDT Timeout");
+            shell.println("WDT Timeout");
             setSystemState(RESTARTING);
             break;
         }

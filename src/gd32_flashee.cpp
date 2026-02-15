@@ -46,14 +46,23 @@ bool _ee_write_to_flash()
     __disable_irq();
     uint32_t target_ee_page_offset=(cur_ee_offset_page+1)%FLASH_PAGE_USE_AS_EE;
     fmc_unlock();
-    uint32_t flash_address = FLASH_EE_BASE_ADDR+FLASH_EE_PAGE_SIZE*(FLASH_EE_START_PAGE+target_ee_page_offset);
-    fmc_page_erase(flash_address);
+    uint32_t flash_target_address = FLASH_EE_BASE_ADDR+FLASH_EE_PAGE_SIZE*(FLASH_EE_START_PAGE+target_ee_page_offset);
+    uint32_t flash_previous_address = FLASH_EE_BASE_ADDR+FLASH_EE_PAGE_SIZE*(FLASH_EE_START_PAGE+cur_ee_offset_page);
+    for(uint32_t offset=0;offset<FLASH_EE_PAGE_SIZE;offset+=sizeof(uint32_t))
+    {
+        if(*(uint32_t*)(flash_target_address + offset) != 0xFFFFFFFF)
+        {
+            fmc_page_erase(flash_target_address);
+            break;
+        }
+    }
     uint32_t* data = (uint32_t*)&ee_buffer;
     for(int offset=0;offset<sizeof(FlashPart)/sizeof(uint32_t);offset++)
     {
-        fmc_word_program(flash_address+offset*4,data[offset]);
+        fmc_word_program(flash_target_address+offset*4,data[offset]);
     }
-    fmc_word_program(FLASH_EE_BASE_ADDR+FLASH_EE_PAGE_SIZE*(FLASH_EE_START_PAGE+cur_ee_offset_page),FLASH_EE_ERASE_FLAG);
+    fmc_page_erase(flash_previous_address);
+    //fmc_word_program(flash_previous_address,FLASH_EE_ERASE_FLAG);
     fmc_lock();
     cur_ee_offset_page=target_ee_page_offset;
     __set_PRIMASK(primask);
@@ -67,9 +76,9 @@ bool _ee_update_checksum()
     return true;
 }
 
-bool ee_init(uint32_t version)
+int8_t ee_init(uint32_t version)
 {
-    // True: loaded False: load error
+    // return: current page or -1: read failed
     if (!_ee_load_from_flash(version))
     {
         for(int i=0;i<sizeof(ee_buffer.storage)/sizeof(uint32_t);i++)
@@ -80,16 +89,17 @@ bool ee_init(uint32_t version)
         ee_buffer.ee_end_flag=FLASH_EE_END_FLAG;
         ee_buffer.version=version;
         _ee_update_checksum();
-        return false;
+        return -1;
     }
-    return true;
+    return cur_ee_offset_page;
 }
 
-bool ee_save()
+int8_t ee_save()
 {
+    // return: current page or -1: save failed
     _ee_update_checksum();
-    _ee_write_to_flash();
-    return true;
+    bool result=_ee_write_to_flash();
+    return result ? cur_ee_offset_page: -1;
 }
 
 bool ee_get(uint32_t offset,uint32_t &value)
