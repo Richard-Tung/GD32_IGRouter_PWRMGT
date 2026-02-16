@@ -281,7 +281,7 @@ void cmd_restartdc(Shell& s, char* args)
     digitalWrite(GPIO_EN_DC,LOW);
     delay(1000);
     s.println("Enabling DC...");
-    digitalWrite(GPIO_EN_DC,LOW);
+    digitalWrite(GPIO_EN_DC,HIGH);
     s.println("Done");
 }
 
