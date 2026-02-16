@@ -372,6 +372,19 @@ void cmd_v_wakeup_set(Shell& s, char* args)
     s.print("WakeUp Voltage set to: ");s.print(getConfigValue(CONFIG_VOLT_WAKEUP));s.println("mV");
 }
 
+void cmd_t_wakeup_set(Shell& s, char* args)
+{
+    int32_t result=atoi(args);
+    if(result<2||result>300)
+    {
+        s.println("Error: WakeUp Time must equal or larger than 2s, and less than 300s");
+        s.print("Your input: ");s.print(result);s.println();
+        return;
+    }
+    setConfigValue(CONFIG_TIME_WAKEUP,result);
+    s.print("WakeUp Time set to: ");s.print(getConfigValue(CONFIG_TIME_WAKEUP));s.println("s");
+}
+
 void cmd_t_starting_set(Shell& s, char* args)
 {
     int32_t result=atoi(args);
@@ -403,7 +416,7 @@ void cmd_t_sleep_set(Shell& s, char* args)
     int32_t result=atoi(args);
     if(result<10||result >300)
     {
-        s.println("Error: Enter Sleep Time must equal or larger than 10s, and smaller than 300s");
+        s.println("Error: Enter Sleep Time must equal or larger than 10s, and less than 300s");
         s.print("Your input: ");s.print(result);s.println();
         return;
     }
@@ -458,6 +471,7 @@ void registerCommands()
     intp_set.registerCommand("v_uvlo","Set Low Voltage Shutdown Voltage (mV)",&cmd_v_uvlo_set);
     intp_set.registerCommand("v_wakeup","Set Wake Up Voltage (mV)",&cmd_v_wakeup_set);
 
+    intp_set.registerCommand("t_wakeup","Set WakeUp Time (s)",&cmd_t_wakeup_set);
     intp_set.registerCommand("t_starting","Set Starting Time (s)",&cmd_t_starting_set);
     intp_set.registerCommand("t_shutdown","Set Shutdown Time (s)",&cmd_t_shutdown_set);
     intp_set.registerCommand("t_sleep","Set Enter Sleep Time (s)",&cmd_t_sleep_set);
