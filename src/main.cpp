@@ -130,6 +130,7 @@ const char* getSystemStateString(SystemState state)
 }
 
 SystemState sys_state = STANDBY;
+bool sys_hold = false;
 uint32_t wdt_count=0;
 uint32_t uvlo_count=0;
 uint32_t time_count=0;
@@ -241,6 +242,7 @@ void printConfig()
     shell.print("UVLO Timeout Count: ");shell.print(uvlo_count);shell.println();
     shell.print("WDT Timeout Count: ");shell.print(wdt_count);shell.println();
     shell.print("Timer Count: ");shell.print(time_count);shell.println();
+    if(sys_hold) shell.println("System HOLD");
 }
 
 void cmd_volt(Shell& s, char* args)
@@ -450,6 +452,28 @@ void cmd_t_uvlo_set(Shell& s, char* args)
     s.print("UVLO Timeout set to: ");s.print(getConfigValue(CONFIG_TIMEOUT_UVLO));s.println("s");
 }
 
+void cmd_hold(Shell& s, char* args)
+{
+    if(sys_hold)
+    {
+        s.println("Error: System is already HOLD");
+        return;
+    }
+    sys_hold=true;
+    s.println("System HOLD");
+}
+
+void cmd_unhold(Shell& s, char* args)
+{
+    if(!sys_hold)
+    {
+        s.println("Error: System is already Running");
+        return;
+    }
+    sys_hold=false;
+    s.println("Unhold, System will Running");
+}
+
 CommandInterpreter intp_get(shell,"get","Get Config");
 CommandInterpreter intp_set(shell,"set","Set Config");
 
@@ -460,6 +484,8 @@ void registerCommands()
     shell.registerCommand("restartdc","PowerOff DC and re-PowerOn",&cmd_restartdc);
     shell.registerCommand("save","Save Config",&cmd_save);
     shell.registerCommand("restorefactory","Restore Factory Config",&cmd_restorefactory);
+    shell.registerCommand("hold","Hold System (for DEBUG)",&cmd_hold);
+    shell.registerCommand("unhold","Unhold System, Continue Running",&cmd_unhold);
 
     intp_get.registerCommand("v_vref","Get VREF (mV)",&cmd_v_vref_get);
     intp_get.registerCommand("v_pull","Get VIN Resistance",&cmd_v_pull_get);
@@ -523,7 +549,34 @@ void setup() {
     iwdg_setup();
 
     UpdateLED();
-    setSystemState(STANDBY);
+
+    if(digitalRead(GPIO_WDT_RESET_BUTTON)==LOW) //reset pressed on boot
+    {
+        sys_hold=true;
+        for(int i=0;i<10;i++)//check reset button 10 times in 1s
+        {
+            if(digitalRead(GPIO_WDT_RESET_BUTTON)==HIGH)//if not pressed, assmue wrong check, dont hold system
+            {
+                sys_hold=false;
+                break;
+            }
+            delay(100);
+        }
+    }
+
+    if(!sys_hold) setSystemState(STANDBY);
+    else//if hold on boot, flash led 5 times and hold, enable all output 
+    {
+        for(int i=0;i<5;i++)
+        {
+            digitalWrite(GPIO_RUN_LED,LOW);
+            delay(100);
+            digitalWrite(GPIO_RUN_LED,HIGH);
+            delay(100);
+        }
+        setSystemState(STARTING);//if hold on boot, enable all output
+        shell.println("RESET pressed on Boot, System will HOLD at STARTING");
+    }
     
 }
 
@@ -534,9 +587,11 @@ void loop() {
 
     if (currentMillis - previousMillis >= 1000) {
         previousMillis = currentMillis;
-
-        SystemStateLoop();
-        UpdateLED();
+        if(!sys_hold)
+        {
+            SystemStateLoop();
+            UpdateLED();
+        }
         iwdg_feed();
     }
     if(config_reset_flag)
