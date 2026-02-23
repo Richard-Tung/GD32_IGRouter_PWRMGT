@@ -11,7 +11,6 @@
 #define SHELL_MAX_HELP_LENGTH SHELL_MAX_COMMAND_LENGTH+32
 #define SHELL_PROMPT "> "
 #define SHELL_NEW_LINE "\r\n"
-#define SHELL_SCREEN_WIDTH 80
 
 class Shell;
 

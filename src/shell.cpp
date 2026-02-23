@@ -455,9 +455,6 @@ void Shell::_prompt_lock()
 {
     if(prompt_lock) return;//already locked
     //clear prompt line
-    // this->serial.print('\r');
-    // for(int i=0;i<SHELL_SCREEN_WIDTH;i++) this->serial.print(' ');
-    // this->serial.print('\r');
     serial.print("\033[2K\r");
     prompt_lock=true;
 }
