@@ -460,6 +460,7 @@ void cmd_hold(Shell& s, char* args)
         return;
     }
     sys_hold=true;
+    digitalWrite(GPIO_RUN_LED,HIGH);
     s.println("System HOLD");
 }
 
