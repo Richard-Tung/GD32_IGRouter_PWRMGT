@@ -21,20 +21,6 @@
 #define ADC_SET_RESOLUTION 12
 #define ADC_MAX 4095
 
-// #define ADC_VOLT_PULLUP 200000     //ohm
-// #define ADC_VOLT_PULLDOWN 20000    //ohm
-// #define ADC_VREF 3330           //mV
-
-// #define VOLT_UVLO 11800
-// #define VOLT_WAKEUP 13000
-
-// #define TIME_WAKEUP 2           //s
-// #define TIME_STARTING 30        //s
-// #define TIME_SHUTDOWN 30        //s
-// #define TIME_ENTER_SLEEP 10     //s
-// #define TIMEOUT_WDT 60          //s
-// #define TIMEOUT_UVLO 10         //s
-
 enum ConfigID {
     CONFIG_ADC_VOLT_PULLUP,
     CONFIG_ADC_VOLT_PULLDOWN,
