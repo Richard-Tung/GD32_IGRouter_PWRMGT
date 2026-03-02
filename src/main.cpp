@@ -5,7 +5,7 @@
 #include <Arduino.h>
 
 #include "gd32_flashee.h"
-#include "shell.h"
+#include <richard_shell.h>
 
 #define GPIO_WAKE PA0               //Input ActiveHigh, Connect to ACC
 #define GPIO_VOLT_INPUT_ADC PA1
